@@ -66,7 +66,7 @@ void ShowVector(double *DeviceMemory,int size,char *fn){
 void CG(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 	/* Var */
 	clock_t start,end;
-	const float tol = 1e-15f;
+	const double tol = 1e-15f;
 	double a, b, na, r0, r1;
 	int *d_col, *d_row;
 	double *d_val, *d_x, dot;
@@ -251,7 +251,8 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 	cudaEventCreate( &custart );
 	cudaEventCreate( &custop );
 	cudaEventRecord( custart, 0);
-	for(int k=0;k<MaxIter;k++){
+	int k = 0;
+	while(1){
 		double temp1,temp2,dot_1,dot_1m;
 		//temp1 = (d_q,d_r)
 		cublasStatus = cublasDdot(cublasHandle, N, d_q+N*k, 1, d_r, 1, &temp1);
@@ -267,7 +268,7 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 		cublasStatus = cublasDaxpy(cublasHandle, N, &dot_1m, d_q+N*k, 1, d_r, 1);
 		//d_s = A(CRS) * d_r
 		cusparseDcsrmv(cusparseHandle,CUSPARSE_OPERATION_NON_TRANSPOSE,
-   N, N, nz, &alpha, descr, d_val, d_row, d_col, d_r, &beta, d_s);
+		N, N, nz, &alpha, descr, d_val, d_row, d_col, d_r, &beta, d_s);
 		for(int i=0;i<k;i++){
 			cublasStatus = cublasDdot(cublasHandle, N, d_q + N*i, 1, d_s, 1, &temp1);
 			cublasStatus = cublasDdot(cublasHandle, N, d_q + N*i, 1, d_q + N*i, 1, &temp2);
@@ -285,6 +286,15 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 			// d_p[k+1] = BetaStack[i] * d_p[i];
 			cublasStatus = cublasDaxpy(cublasHandle, N, &BetaStack[i], d_q+N*i, 1, d_q+N*(k+1), 1);
 		}
+
+		//convergence check
+		double r1;
+		cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
+		if (r1 < tol*tol) break;
+
+		//Incr
+		k++;
+		if(k==MaxIter) k=0;
 
 	}
 	cudaMemcpy(x, d_x, N*sizeof(double), cudaMemcpyDeviceToHost);
