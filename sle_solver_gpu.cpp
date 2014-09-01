@@ -179,7 +179,6 @@ void CG(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 	/* Var */
 	clock_t start,end;
-	const float tol = 1e-15f;
 	double a, b, na, r0, r1;
 	int *d_col, *d_row;
 	double *d_val, *d_x;
@@ -253,6 +252,19 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 	cudaEventRecord( custart, 0);
 	int k = 0;
 	while(1){
+
+                //convergence check
+		/*
+		double r1;
+                cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
+                if (r1 < 1e-40) break;
+                std::cout << "r1=" << r1 << std::endl;
+		*/
+		double r1;
+		cublasStatus = cublasDnrm2(cublasHandle,N,d_r,1,&r1);
+		//std::cout << "r1=" << r1 << std::endl;
+		if( r1 < 1e-15 ) break;
+
 		double temp1,temp2,dot_1,dot_1m;
 		//temp1 = (d_q,d_r)
 		cublasStatus = cublasDdot(cublasHandle, N, d_q+N*k, 1, d_r, 1, &temp1);
@@ -276,25 +288,36 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 		}
 		//d_p = d_r
 		cublasStatus = cublasDcopy(cublasHandle, N, d_r, 1, d_p+N*(k+1), 1);
-		for(int i=0;i<k;i++){
+		for(int i=0;i<=k;i++){
 			// d_p = BetaStack[i] * d_p;
 			cublasStatus = cublasDaxpy(cublasHandle, N, &BetaStack[i], d_p+N*i, 1, d_p+N*(k+1), 1);
 		}
 		//d_q = d_s
 		cublasStatus = cublasDcopy(cublasHandle, N, d_s, 1, d_q+N*(k+1), 1);
-		for(int i=0;i<k;i++){
+		for(int i=0;i<=k;i++){
 			// d_p[k+1] = BetaStack[i] * d_p[i];
 			cublasStatus = cublasDaxpy(cublasHandle, N, &BetaStack[i], d_q+N*i, 1, d_q+N*(k+1), 1);
 		}
 
-		//convergence check
-		double r1;
-		cublasStatus = cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
-		if (r1 < tol*tol) break;
-
 		//Incr
 		k++;
-		if(k==MaxIter) k=0;
+		if(k==MaxIter){
+			k=0;
+			//d_Ax = A(CRS) * x
+			cusparseDcsrmv(cusparseHandle,CUSPARSE_OPERATION_NON_TRANSPOSE,
+			N, N, nz, &alpha, descr, d_val, d_row, d_col, d_x, &beta, d_Ax);
+			// d_r = B (Host Memory)
+			cudaMemcpy(d_r, rhs, N*sizeof(double), cudaMemcpyHostToDevice);
+			// d_r = -d_Ax + d_r
+			cublasDaxpy(cublasHandle, N, &alpham1, d_Ax, 1, d_r, 1);
+			//d_p = dr
+			cublasStatus = cublasDcopy(cublasHandle, N, d_r, 1, d_p, 1);
+			//d_q = A(CRS) * d_r
+			cusparseDcsrmv(cusparseHandle,CUSPARSE_OPERATION_NON_TRANSPOSE,
+			N, N, nz, &alpha, descr, d_val, d_row, d_col, d_r, &beta, d_q);
+			//d_s = d_q
+			cublasStatus = cublasDcopy(cublasHandle, N, d_q, 1, d_s, 1);
+		}
 
 	}
 	cudaMemcpy(x, d_x, N*sizeof(double), cudaMemcpyDeviceToHost);
@@ -534,8 +557,8 @@ int main(int argc, char **argv){
 
 	/* GCR Method */
 	for(i=0;i<N;i++) x[i] = 0.0;
-	for(int i=0;i<10;i++)
-		GCR(M,N,nz,I,J,val,x,rhs);
+	//for(i=0;i<10;i++)
+	GCR(M,N,nz,I,J,val,x,rhs);
 	printf("[GCR]\n");
 	for(i=0;i<5;i++) printf("[%d] %lf\n",i,x[i]);
 
