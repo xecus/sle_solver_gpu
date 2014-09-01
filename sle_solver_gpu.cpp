@@ -4,43 +4,12 @@
 	2014/08/31
 
 */
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <cuda_runtime.h>
 #include <cusparse_v2.h>
 #include <cublas_v2.h>
 #include <helper_functions.h>
 #include <helper_cuda.h>
-
-/* CSR Matrix Generator (for Testing) */
-/* quote from CUDA Sample */
-void genTridiag(int *I, int *J, double *val, int N, int nz){
-	I[0] = 0, J[0] = 0, J[1] = 1;
-	val[0] = (double)rand()/RAND_MAX + 10.0f;
-	val[1] = (double)rand()/RAND_MAX;
-	int start;
-	for (int i = 1; i < N; i++){
-		if (i > 1){
-			I[i] = I[i-1]+3;
-		}else{
-			I[1] = 2;
-		}
-		start = (i-1)*3 + 2;
-		J[start] = i - 1;
-		J[start+1] = i;
-		if (i < N-1){
-			J[start+2] = i + 1;
-		}
-		val[start] = val[start-1];
-		val[start+1] = (double)rand()/RAND_MAX + 10.0f;
-		if (i < N-1){
-			val[start+2] = (double)rand()/RAND_MAX;
-		}
-	}
-	I[N] = nz;
-	return;
-}
+#include "sle_solver_gpu.h"
 
 /* for BiCG-STAB */
 double vector_norm(double a[],int size){
@@ -519,54 +488,5 @@ int BiCGSTAB(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs)
 	cudaFree(d_Ae);
 	cudaFree(d_p2);
 	//cudaDeviceReset();
-	return 0;
-}
-
-int main(int argc, char **argv){
-	int i;
-	int M;
-	int N;
-	int nz;
-	int *I;
-	int *J;
-	double *val;
-	double *x;
-	double *rhs;
-	//Make Sparse Matrix
-	M = N = 1048576;
-	nz = (N-2)*3 + 4;
-	I = new int[N+1];
-	J = new int[nz];
-	val = new double[nz];
-	x = new double[N];
-	rhs = new double[N];
-	genTridiag(I, J, val, N, nz);
-	for (int i = 0; i < N; i++) rhs[i] = 0.1;
-
-	/* CG */
-	for(i=0;i<N;i++) x[i] = 0.0;
-	CG(M,N,nz,I,J,val,x,rhs);
-	printf("[CG]\n");
-	for(i=0;i<5;i++) printf("[%d] %lf\n",i,x[i]);
-
-	/* BICG-STAB */
-	for(i=0;i<N;i++) x[i] = 0.0;
-	BiCGSTAB(M,N,nz,I,J,val,x,rhs);
-	printf("[BiCGSTAB]\n");
-	for(i=0;i<5;i++) printf("[%d] %lf\n",i,x[i]);
-
-	/* GCR Method */
-	for(i=0;i<N;i++) x[i] = 0.0;
-	//for(i=0;i<10;i++)
-	GCR(M,N,nz,I,J,val,x,rhs);
-	printf("[GCR]\n");
-	for(i=0;i<5;i++) printf("[%d] %lf\n",i,x[i]);
-
-	delete[] I;
-	delete[] J;
-	delete[] val;
-	delete[] x;
-	delete[] rhs;
-
 	return 0;
 }
