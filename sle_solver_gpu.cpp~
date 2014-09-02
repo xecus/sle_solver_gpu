@@ -250,7 +250,7 @@ int GCR(int M,int N,int nz,int *I,int *J,double *val,double *x,double *rhs){
 		//d_s = A(CRS) * d_r
 		cusparseDcsrmv(cusparseHandle,CUSPARSE_OPERATION_NON_TRANSPOSE,
 		N, N, nz, &alpha, descr, d_val, d_row, d_col, d_r, &beta, d_s);
-		for(int i=0;i<=k;i++){
+		for(int i=0;i<k;i++){
 			cublasStatus = cublasDdot(cublasHandle, N, d_q + N*i, 1, d_s, 1, &temp1);
 			cublasStatus = cublasDdot(cublasHandle, N, d_q + N*i, 1, d_q + N*i, 1, &temp2);
 			BetaStack[i] = -1.0 * temp1 / temp2;
